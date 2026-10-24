@@ -1,0 +1,39 @@
+# Pre-registered strategy research settings (daily candles, BTC and ETH only).
+# Do NOT edit anything here after you have seen results. That is how overfitting happens.
+# Use with:  python -m bot.download --config research.yaml
+#            python -m bot.research dev   --config research.yaml
+#            python -m bot.research final --config research.yaml   (ONE time only)
+
+exchange:
+  name: binance
+
+data:
+  symbols: [BTC/USDT, ETH/USDT]
+  timeframe: 1d
+  history_start: "2017-09-01"   # Binance's earliest BTC and ETH daily history is Aug 2017
+  history_days: 3000            # unused when history_start is set
+  dir: data
+
+research:
+  dev_end: "2023-10-22"         # development window = before this date, final exam = from this date
+  atr_period: 14
+  atr_stop_mult: 2.0            # protective stop and sizing distance = entry - 2 x ATR
+  breakout_entry_days: 20       # candidate A: enter above the 20-day high ...
+  breakout_exit_days: 10        #              ... leave below the 10-day low
+  trend_days: 100               # candidate B: hold while price is above its 100-day average
+  cross_fast: 20                # candidate C (control): 20-day average crosses the 50-day
+  cross_slow: 50
+  # Pass criteria, fixed in advance:
+  min_trades: 30
+  max_drawdown_vs_buyhold: 0.6667   # strategy max drawdown must be <= two thirds of buy-and-hold's
+  # also required: net return > 0 and a better return-to-drawdown ratio than buy-and-hold
+
+skeptic:
+  max_risk_per_trade_pct: 1.0   # risk 1% of equity per trade (used by position sizing)
+
+fees:
+  taker_pct: 0.10
+  slippage_pct: 0.05
+
+backtest:
+  starting_equity: 1000

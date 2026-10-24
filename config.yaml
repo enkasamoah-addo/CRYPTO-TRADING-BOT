@@ -1,0 +1,50 @@
+# All tunable settings live here so backtests can be re-run without editing code.
+# Values marked "starting value" are untested defaults, not recommendations.
+
+exchange:
+  name: binance
+  # Historical data always comes from the real (mainnet) public market data.
+  # Only simulated orders (Step 6) go to the Testnet.
+
+data:
+  symbols: [BTC/USDT, ETH/USDT]
+  timeframe: 4h
+  history_days: 1095
+  dir: data
+
+strategy:            # Charts agent: moving average crossover, long only
+  fast_ma: 20        # common default, deliberately not tuned
+  slow_ma: 50        # common default, deliberately not tuned
+  atr_period: 14
+  atr_stop_mult: 2.0 # stop = entry - atr_stop_mult * ATR
+  reward_risk: 2.0   # target = entry + reward_risk * (entry - stop)
+
+skeptic:             # starting values to tune in backtests (Step 5)
+  min_reward_risk: 2.0
+  max_risk_per_trade_pct: 1.0
+  max_open_positions: 3
+  max_daily_loss_pct: 3.0
+  max_drawdown_pct: 10.0
+  max_fee_share_of_target_pct: 10.0
+  reject_stop_on_round_number: true
+  round_number_tolerance_pct: 0.15   # block a stop this close to a round price
+  reject_stop_at_swing_low: true
+  swing_lookback_candles: 20
+  swing_tolerance_pct: 0.15          # block a stop this close to the recent low
+
+fees:
+  taker_pct: 0.10    # approximate Binance spot fee before discounts
+  slippage_pct: 0.05 # assumption; refine with demo-trading data
+
+logging:
+  db_path: data/decisions.sqlite3
+
+scout:               # starting values; permissive because we only watch two pairs
+  lookback_candles: 24
+  min_quote_volume: 0
+  min_volatility_pct: 0.0
+  top_n: 5
+
+backtest:
+  starting_equity: 1000   # USDT, simulated
+  periods: 6              # also report results on this many equal slices of history

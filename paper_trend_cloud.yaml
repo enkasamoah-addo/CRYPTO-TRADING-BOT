@@ -1,0 +1,46 @@
+# CLOUD copy of paper_trend.yaml: identical rules, but the bot's memory lives in the state/ folder
+# so the scheduled GitHub job can save it between runs. Do not change the rules.
+# Paper trading of the daily trend filter (the strategy that passed the research).
+
+exchange:
+  name: binance
+
+data:
+  symbols: [BTC/USDT, ETH/USDT]
+  timeframe: 1d
+  history_days: 3000
+  dir: state
+
+strategy:
+  name: trend            # makes Chief use bot/trend_chief.py
+
+research:                # same values the strategy was tested with. Do not change.
+  atr_period: 14
+  atr_stop_mult: 2.0
+  trend_days: 100
+  breakout_entry_days: 20   # not traded here; the shared signal code computes all three candidates
+  breakout_exit_days: 10
+  cross_fast: 20
+  cross_slow: 50
+
+skeptic:
+  max_risk_per_trade_pct: 1.0
+  max_open_positions: 3
+  max_daily_loss_pct: 3.0
+  # The tested strategy had a worst drawdown of 25.5% (2017-2023). A 10% kill switch would
+  # trip during normal behaviour, so it is set beyond anything seen in testing: if it fires,
+  # the bot is doing worse than history and a human should look before it trades again.
+  max_drawdown_pct: 30.0
+  min_reward_risk: 0.0
+  max_fee_share_of_target_pct: 100.0
+  disabled_rules: [reward_risk, fees_vs_target, round_number_stop, swing_low_stop]
+
+fees:
+  taker_pct: 0.10
+  slippage_pct: 0.05
+
+logging:
+  db_path: state/paper_trend.sqlite3
+
+backtest:
+  starting_equity: 1000
