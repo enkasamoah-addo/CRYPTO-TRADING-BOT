@@ -1,0 +1,44 @@
+name: daily-paper-cycle
+
+on:
+  schedule:
+    - cron: "10 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-bot
+  cancel-in-progress: false
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Can we reach Binance from here?
+        run: python -m bot.netcheck
+
+      - name: Run one paper-trading cycle
+        run: python -m bot.chief --config paper_trend_cloud.yaml --once
+
+      - name: Build the dashboard
+        run: python -m bot.dashboard --config paper_trend_cloud.yaml --out state/dashboard.html
+
+      - name: Save the bot's memory and dashboard
+        run: |
+          git config user.name "paper-bot"
+          git config user.email "paper-bot@users.noreply.github.com"
+          git add state
+          git commit -m "Daily paper cycle $(date -u +%F)" || echo "nothing changed"
+          git push
