@@ -8,9 +8,8 @@ import sys
 import time
 from datetime import datetime, timezone
 
-import ccxt
-
 from .config import load_config
+from .exchange import make_exchange
 from .data import check_quality, fetch_ohlcv_history, save_csv
 
 
@@ -21,7 +20,7 @@ def main(argv=None) -> int:
 
     cfg = load_config(args.config)
     data_cfg = cfg["data"]
-    exchange = getattr(ccxt, cfg["exchange"]["name"])({"enableRateLimit": True})
+    exchange = make_exchange(cfg)
 
     if data_cfg.get("history_start"):   # fixed start date (research config), e.g. 2017-08-17
         start = datetime.fromisoformat(str(data_cfg["history_start"])).replace(tzinfo=timezone.utc)

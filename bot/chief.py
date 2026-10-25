@@ -220,9 +220,9 @@ def main(argv=None) -> int:
         print("Kill switch cleared. Review the recent decisions before letting it trade again.")
         return 0
 
-    import ccxt
+    from .exchange import make_exchange
     from .feed import LiveFeed
-    exchange = getattr(ccxt, cfg["exchange"]["name"])({"enableRateLimit": True})
+    exchange = make_exchange(cfg)
     chief_class = Chief
     if cfg.get("strategy", {}).get("name") == "trend":
         from .trend_chief import TrendChief

@@ -28,17 +28,18 @@ def probe(url: str, opener=urllib.request.urlopen, timeout: int = 15) -> str:
         return f"failed ({type(exc).__name__})"
 
 
-def check_candles() -> str:
+def check_candles(cfg=None) -> str:
     """The real test: ask for a few daily candles exactly the way the bot does."""
     try:
-        import ccxt
-        rows = ccxt.binance({"enableRateLimit": True}).fetch_ohlcv("BTC/USDT", "1d", limit=5)
+        from .exchange import make_exchange
+        rows = make_exchange(cfg or {"exchange": {"name": "binance"}}).fetch_ohlcv("BTC/USDT", "1d", limit=5)
         return "ok" if len(rows) >= 3 else f"only {len(rows)} candles came back"
     except Exception as exc:
         return f"failed ({type(exc).__name__}: {str(exc)[:120]})"
 
 
-def main(candles=check_candles, prober=probe) -> int:
+def main(candles=None, prober=probe, cfg=None) -> int:
+    candles = candles or (lambda: check_candles(cfg))
     for name, url in ENDPOINTS:
         print(f"{name}: {prober(url)}")
     result = candles()
@@ -51,4 +52,8 @@ def main(candles=check_candles, prober=probe) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    from .config import load_config
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default=None, help="check with the same connection settings the bot uses")
+    sys.exit(main(cfg=load_config(ap.parse_args().config)))

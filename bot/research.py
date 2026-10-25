@@ -3,6 +3,7 @@
 Three candidates, fixed rules, one development test, one final exam.
     python -m bot.research dev   --config research.yaml
     python -m bot.research final --config research.yaml     (can only be run once)
+    python -m bot.research universe --config research_universe.yaml   (round two, run once)
 
 Realism: signal at the daily close, fill at the NEXT open, fees and slippage on both
 sides, protective stop checked on every candle (stop wins if unsure), no leverage,
@@ -67,6 +68,8 @@ def simulate(frames: Dict[str, pd.DataFrame], cfg: dict, strategy: str,
     curve = []
     fees_paid = 0.0
     n_syms = len(data)
+    cap = rcfg.get("max_open_positions")      # None = no limit (BTC/ETH research had none)
+    peak_open = 0
 
     def equity_at(mark):  # mark: symbol -> price
         return cash + sum(p["qty"] * mark[s] for s, p in pos.items())
@@ -79,7 +82,7 @@ def simulate(frames: Dict[str, pd.DataFrame], cfg: dict, strategy: str,
             if i is None:
                 continue
             row, order = data[s].iloc[i], pending.pop(s)
-            if order["action"] == "enter" and s not in pos:
+            if order["action"] == "enter" and s not in pos and (cap is None or len(pos) < cap):
                 fill = float(row["open"]) * (1 + slip)
                 stop = fill - rcfg["atr_stop_mult"] * order["atr"]
                 mark = {k: last_close[k] for k in data}
@@ -91,6 +94,7 @@ def simulate(frames: Dict[str, pd.DataFrame], cfg: dict, strategy: str,
                     cash -= cost + f
                     fees_paid += f
                     pos[s] = {"qty": qty, "entry": fill, "stop": stop, "entry_time": t, "fees": f}
+                    peak_open = max(peak_open, len(pos))
             elif order["action"] == "exit" and s in pos:
                 cash, fees_paid = _close(pos, s, float(row["open"]) * (1 - slip), t, "signal",
                                          trades, cash, fees_paid, fee)
@@ -124,7 +128,7 @@ def simulate(frames: Dict[str, pd.DataFrame], cfg: dict, strategy: str,
     final = curve[-1][1] if curve else start_equity
     eq = pd.Series([v for _, v in curve], index=[t for t, _ in curve])
     return {"strategy": strategy, "start_equity": start_equity, "final_equity": final,
-            "trades": trades, "open_positions": len(pos), "fees_paid": fees_paid,
+            "trades": trades, "open_positions": len(pos), "peak_open": peak_open, "fees_paid": fees_paid,
             "unrealized": unreal, "curve": eq, **_stats(eq, trades, start_equity)}
 
 
@@ -182,6 +186,64 @@ def judge(res: dict, bh: dict, rcfg: dict) -> dict:
     return {"checks": checks, "passed": all(checks.values())}
 
 
+def judge_coin(res: dict, bh: dict) -> bool:
+    """One coin on its own: made money after costs AND a better return-to-drawdown than holding it."""
+    ratio = lambda x: x["return_pct"] / x["max_dd_pct"] if x["max_dd_pct"] > 0 else float("inf")
+    return res["return_pct"] > 0 and ratio(res) > ratio(bh)
+
+
+def judge_universe(coin_passed: Dict[str, bool], portfolio: dict, rcfg: dict) -> dict:
+    """Round-two verdict, fixed in advance: most coins pass AND the portfolio passes the four checks."""
+    need = rcfg["coins_passing_needed"]
+    n_pass = sum(coin_passed.values())
+    checks = {f"at least {need} of {len(coin_passed)} coins pass on their own": n_pass >= need,
+              "portfolio passes all four checks": portfolio["passed"]}
+    return {"checks": checks, "passed": all(checks.values()), "coins_passed": n_pass}
+
+
+def _universe(cfg, frames, out_dir) -> int:
+    rcfg = cfg["research"]
+    lock = out_dir / "research_universe_DONE.json"
+    if lock.exists():
+        print(f"The multi-coin test was already run ({lock}). Running it again with a different coin list "
+              "or settings would be tuning. Refusing.")
+        return 1
+    print("\n=== Round two: the SAME trend rules on coins they were never tuned on ===")
+    coin_passed, rows = {}, {}
+    for sym, df in frames.items():
+        one = {sym: df}
+        bh = buy_and_hold(one, cfg)
+        r = simulate(one, {**cfg, "research": {**rcfg, "max_open_positions": None}}, "trend")
+        ok = judge_coin(r, bh)
+        coin_passed[sym] = ok
+        rows[sym] = {"passed": ok, "return_pct": r["return_pct"], "max_dd_pct": r["max_dd_pct"],
+                     "hold_return_pct": bh["return_pct"], "hold_dd_pct": bh["max_dd_pct"], "n_trades": r["n_trades"]}
+        print(f"{sym:10} since {df['timestamp'].iloc[0].date()}  bot {r['return_pct']:+7.1f}% (worst drop "
+              f"{r['max_dd_pct']:.0f}%, {r['n_trades']} trades)   hold {bh['return_pct']:+8.1f}% (worst drop "
+              f"{bh['max_dd_pct']:.0f}%)   => {'PASS' if ok else 'fail'}")
+    start = max(f["timestamp"].iloc[0] for f in frames.values()).date().isoformat()
+    last = max(f["timestamp"].iloc[-1] for f in frames.values()).date()
+    bh = buy_and_hold(frames, cfg, start=start)
+    pr = simulate(frames, cfg, "trend", start=start)
+    pj = judge(pr, bh, rcfg)
+    print(f"\nPortfolio of all {len(frames)} coins together, {start} to {last}, at most "
+          f"{rcfg['max_open_positions']} positions open at once (peak seen: {pr['peak_open']}):")
+    print(f"  bot {pr['return_pct']:+.1f}%, worst drop {pr['max_dd_pct']:.1f}%, {pr['n_trades']} trades | "
+          f"equal-split hold {bh['return_pct']:+.1f}%, worst drop {bh['max_dd_pct']:.1f}%")
+    for check, ok in pj["checks"].items():
+        print(f"    [{'PASS' if ok else 'FAIL'}] {check}")
+    verdict = judge_universe(coin_passed, pj, rcfg)
+    for check, ok in verdict["checks"].items():
+        print(f"  [{'PASS' if ok else 'FAIL'}] {check}")
+    print("\n" + ("PASSED round two. Encouraging, not proof: today's big coins are the survivors, so results lean "
+                   "optimistic. Next: forward paper trading in a cloned bot." if verdict["passed"] else
+                   "Did NOT pass. Conclusion: the trend rules do not carry over to these coins well enough. "
+                   "Do not change the rules or the coin list and retry on this data."))
+    lock.write_text(json.dumps({"coins": rows, "portfolio_passed": pj["passed"], "verdict": verdict}, indent=2))
+    pd.DataFrame(pr["trades"]).to_csv(out_dir / "research_universe_portfolio_trades.csv", index=False)
+    return 0
+
+
 def _load(cfg) -> Dict[str, pd.DataFrame]:
     d = cfg["data"]
     frames = {}
@@ -215,13 +277,15 @@ def _report(title, window, frames, cfg, start, end, only=None):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Pre-registered strategy research")
-    ap.add_argument("stage", choices=["dev", "final"])
+    ap.add_argument("stage", choices=["dev", "final", "universe"])
     ap.add_argument("--config", default=None)
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
     frames = _load(cfg)
-    cut = cfg["research"]["dev_end"]
     out_dir = Path(cfg["data"]["dir"])
+    if args.stage == "universe":
+        return _universe(cfg, frames, out_dir)
+    cut = cfg["research"]["dev_end"]
     dev_file, lock_file = out_dir / "research_dev_result.json", out_dir / "research_final_DONE.json"
     first = min(f["timestamp"].iloc[0] for f in frames.values()).date()
     last = max(f["timestamp"].iloc[-1] for f in frames.values()).date()

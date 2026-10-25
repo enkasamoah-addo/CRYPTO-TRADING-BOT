@@ -63,9 +63,9 @@ def load_candles(cfg: dict, symbols, try_live: bool = True):
     frames, notes = {}, []
     if try_live:
         try:
-            import ccxt
+            from .exchange import make_exchange
             from .feed import LiveFeed
-            feed = LiveFeed(getattr(ccxt, cfg["exchange"]["name"])({"enableRateLimit": True}), d["timeframe"],
+            feed = LiveFeed(make_exchange(cfg), d["timeframe"],
                             retries=1)
             for s in symbols:
                 frames[s] = feed.candles(s)
