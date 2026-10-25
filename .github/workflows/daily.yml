@@ -27,7 +27,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Can we reach Binance from here?
-        run: python -m bot.netcheck
+        run: python -m bot.netcheck --config paper_trend_cloud.yaml
 
       - name: Run one paper-trading cycle
         run: python -m bot.chief --config paper_trend_cloud.yaml --once
