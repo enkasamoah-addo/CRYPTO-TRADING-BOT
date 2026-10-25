@@ -9,6 +9,13 @@ def make_exchange(cfg: dict):
     mirror https://data-api.binance.vision), every price request goes there instead. Needed on
     servers in places where Binance's main API is blocked (GitHub's free servers are in the US)."""
     ex = getattr(ccxt, cfg["exchange"]["name"])({"enableRateLimit": True})
+    # The bot only trades spot. By default ccxt also loads futures market lists from other Binance
+    # servers (fapi/dapi), which are blocked in the same places and are not needed.
+    opt = ex.options.get("fetchMarkets")
+    if isinstance(opt, dict):
+        opt["types"] = ["spot"]
+    else:
+        ex.options["fetchMarkets"] = ["spot"]
     base = (cfg["exchange"].get("api_base") or "").rstrip("/")
     if base:
         for key, url in list(ex.urls["api"].items()):
