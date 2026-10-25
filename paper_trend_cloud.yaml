@@ -4,6 +4,7 @@
 
 exchange:
   name: binance
+  api_base: https://data-api.binance.vision
 
 data:
   symbols: [BTC/USDT, ETH/USDT]
